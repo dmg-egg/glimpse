@@ -80,6 +80,8 @@ Common combinations:
 - **Overlay**: `frameless + transparent` — shaped widgets that float over content
 - **Companion widget**: `frameless + transparent + floating + clickThrough` — visual-only overlays that don't interfere with the desktop
 
+On macOS, **Cmd-W closes the window and terminates its native process**, including frameless/no-dock windows. It emits `closed`, not a page `message`: closing is not snoozing, approving, or denying. Standard editing shortcuts, including Shift-Cmd-Z, are preserved.
+
 ## Follow Cursor
 
 Attach a window to the cursor. Combined with `transparent + frameless + floating + clickThrough`, this creates visual companions that follow the mouse without interfering with normal usage.
@@ -206,6 +208,24 @@ const win = open('<html>...</html>', {
 | `hidden` | boolean | `false` | Start hidden (prewarm mode) — load HTML in the background, reveal with `win.show()` |
 | `autoClose` | boolean | `false` | Close automatically after the first `message` event |
 | `noDock` | boolean | `false` | No dock icon or app switcher entry (macOS) — window still receives focus and keyboard input |
+| `stderr` | `"inherit"` or synchronous `(chunk: Buffer) => void` | `"inherit"` | Native diagnostics: inherit host stderr, or capture raw chunks without writing them into the host terminal |
+
+#### Native diagnostics
+
+By default, native stderr is inherited, preserving existing diagnostic output. To keep a TUI quiet without losing evidence, supply a synchronous capture callback:
+
+```js
+const diagnostics = [];
+const win = open('<body>Local content</body>', {
+  stderr: (chunk) => diagnostics.push(chunk),
+});
+win.on('error', (error) => console.error(error));
+// When needed: Buffer.concat(diagnostics) contains the captured diagnostic bytes.
+```
+
+The wrapper immediately drains the captured pipe, even before `ready`. Chunks are raw `Buffer`s, not lines; concatenate bytes or use Node's `StringDecoder` for streaming text. The caller owns retention limits and storage. Only `"inherit"` or a function is accepted; invalid values throw `TypeError` before spawning. If the callback throws, the failed chunk is written to host stderr and the failure emits `error`; stderr read failures also emit `error`. Install an `error` listener on handles returned by `open()`/`statusItem()`, as with other process failures. `prompt()` handles errors internally: its first error closes the host and rejects the promise, while later errors do not resettle the promise or become unhandled. Use a synchronous callback, not an async function. Captured chunks may still arrive after `closed` or after `prompt()` settles; those signals do not guarantee that diagnostics are complete.
+
+`prompt()` and `statusItem()` accept the same `stderr` option. This routes diagnostics only; JSON Lines protocol stdout is unchanged.
 
 ### `statusItem(html, options?)` — macOS only
 
@@ -463,7 +483,7 @@ Runtime `hide` and nonactivating `show` are macOS ordinary-window features only.
 {"type":"closed"}
 ```
 
-Diagnostic logs are written to **stderr** (prefixed `[glimpse]`) and do not affect the protocol.
+Diagnostic logs are written to **stderr** and do not affect protocol **stdout**. Glimpse's own logs are prefixed `[glimpse]`; native Cocoa/WebKit/input-method logs may have different prefixes. Such stderr output is diagnostic evidence, not corrupted JSON Lines. The Node `stderr` option controls inheritance or capture without changing the native protocol.
 
 ## CLI Usage
 
@@ -595,6 +615,15 @@ Requires [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) and Micr
 ```bash
 npm run build:windows
 ```
+
+## Focused Checks
+
+```bash
+npm run test:diagnostics  # synthetic Node host; no native window or permissions
+npm run test:keyboard     # macOS Cocoa harness; no Accessibility/AppleScript
+```
+
+The keyboard harness compiles the production panel, Edit menu and close delegate with a test-only entry point, then invokes native key equivalents in regular and accessory/frameless modes. It verifies Cmd-W's close/exit lifecycle, editing responder-chain fallback (including Shift-Cmd-Z), menu configuration and unshifted menu actions without posting OS-wide keys. It does not verify shifted dynamic menu delivery, physical keyboard delivery or focused WebView text editing. An optional manual check is to open a local page with a text input, try Cmd-C/V/X/A/Z and Shift-Cmd-Z, then Cmd-W in regular and frameless/no-dock windows. Run native UI checks serially; no system permissions need to be requested or granted.
 
 ## Platform Notes
 

@@ -247,6 +247,7 @@ class GlimpsePanel: NSWindow {
     /// ⌘C / ⌘V / ⌘X / ⌘A / ⌘Z (and ⇧⌘Z), so we add a responder-chain
     /// fallback here. The installed Edit menu already handles the standard
     /// regular-activation case; this kicks in when the menu bar isn't routing.
+    /// ⌘W closes through the window lifecycle, ignoring Caps Lock only for close.
     /// Credit: github.com/HazAT/glimpse#18 (Stefan Wagner).
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if super.performKeyEquivalent(with: event) { return true }
@@ -255,10 +256,14 @@ class GlimpsePanel: NSWindow {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let cmd: NSEvent.ModifierFlags = .command
         let cmdShift: NSEvent.ModifierFlags = [.command, .shift]
-        guard modifiers == cmd || modifiers == cmdShift,
-              let chars = event.charactersIgnoringModifiers?.lowercased() else {
-            return false
+        guard let chars = event.charactersIgnoringModifiers?.lowercased() else { return false }
+
+        if modifiers.subtracting(.capsLock) == cmd && chars == "w" {
+            close()
+            return true
         }
+
+        guard modifiers == cmd || modifiers == cmdShift else { return false }
 
         let action: Selector?
         switch (chars, modifiers) {
