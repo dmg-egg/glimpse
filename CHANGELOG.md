@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0
+
+- **Feature (Node)**: `open()`, `prompt()`, and `statusItem()` accept a synchronous `stderr` Buffer callback for quiet diagnostic capture. Inherited stderr remains the default; captured pipes drain immediately without changing JSON Lines stdout.
+- **Fix (macOS)**: Cmd-W closes ordinary windows and terminates their native process, including frameless/no-dock windows and when Caps Lock is enabled. Editing shortcuts remain unchanged; closing is not hiding or a page decision.
+- **Fix (Node)**: A failing diagnostic callback in `prompt()` closes the host before rejecting and retains error handling for subsequent failures. Failed callback chunks are preserved on host stderr; callback and read failures are surfaced rather than silently discarded.
+- **Diagnostics**: Cocoa/WebKit/input-method logs belong to stderr, not protocol stdout. Capture callbacks must be synchronous; callers own retention and storage. Captured chunks may still arrive after `closed` or prompt settlement, so those signals do not guarantee complete diagnostics.
+- **Distribution**: This personal fork's release is source-only on GitHub, not an npm `glimpseui` publication. No prebuilt binaries are provided.
+
 ## 0.9.0
 
 - **Feature (macOS)**: `win.hide()` / the `hide` command orders out an ordinary window without closing its native process or WKWebView. The document, input, selection, and scroll state remain available, and JavaScript evaluation and repeated page messages continue while hidden.

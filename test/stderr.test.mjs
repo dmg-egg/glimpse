@@ -33,6 +33,8 @@ async function runMockHost() {
     if (msg.type === 'eval') {
       process.stderr.write(burst, () => send({ type: 'message', data: { drained: true } }));
     }
+    if (msg.type === 'hide') send({ type: 'visibility', visible: false });
+    if (msg.type === 'show') send({ type: 'visibility', visible: true });
     if (msg.type === 'close') {
       const close = () => process.stdout.write(JSON.stringify({ type: 'closed' }) + '\n', () => process.exit(0));
       if (promptCallbackError) {
@@ -156,6 +158,18 @@ async function runScenario(scenario) {
       assert.deepEqual(Buffer.concat(chunks), expected);
     }
     if (scenario !== 'callback-error') assert.deepEqual(errors, []);
+    if (scenario === 'capture-visibility') {
+      const hidden = waitFor(win, 'visibility');
+      win.hide();
+      assert.deepEqual(await hidden, [{ visible: false }]);
+      const shown = waitFor(win, 'visibility');
+      win.show({ activate: false });
+      assert.deepEqual(await shown, [{ visible: true }]);
+    }
+    if (scenario === 'status-item') {
+      assert.throws(() => win.hide(), /ordinary macOS windows/);
+      assert.throws(() => win.show({ activate: false }), /ordinary macOS windows/);
+    }
     if (scenario === 'read-error') {
       const readError = new Error('synthetic stderr read failure');
       children[0].stderr.emit('error', readError);
@@ -187,6 +201,7 @@ if (process.argv[2] === '--mock-host') {
 } else {
   const scenarios = ['default', 'inherit', 'capture', 'burst', 'callback-error', 'read-error', 'prompt', 'prompt-callback-error', 'invalid'];
   if (process.platform !== 'win32') scenarios.push('status-item');
+  if (process.platform === 'darwin') scenarios.push('capture-visibility');
   for (const scenario of scenarios) {
     const result = spawnSync(process.execPath, [testPath, '--scenario', scenario], {
       encoding: 'utf8', timeout: 15_000,
