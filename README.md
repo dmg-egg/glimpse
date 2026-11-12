@@ -15,6 +15,8 @@ Glimpse opens a native WebView window and speaks a bidirectional JSON Lines prot
 
 ## Install
 
+Releases of the `dmg-egg/glimpse` personal fork are source-only on GitHub, with no npm publication or prebuilt binaries. Use [Build from Source](#build-from-source) for this fork. The npm instructions below refer to the upstream `glimpseui` package, not this fork's GitHub releases.
+
 ```bash
 npm install glimpseui
 ```
