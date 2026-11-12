@@ -165,6 +165,9 @@ class GlimpseWindow extends EventEmitter {
   }
 
   show(options = {}) {
+    if (options.activate != null && typeof options.activate !== 'boolean') {
+      throw new TypeError('show options.activate must be a boolean');
+    }
     if (options.activate === false && !this.#supportsWindowVisibility) {
       throw new Error('show({ activate: false }) is only supported for ordinary macOS windows');
     }

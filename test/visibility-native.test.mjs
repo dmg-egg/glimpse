@@ -175,7 +175,7 @@ print(String(data: try! JSONSerialization.data(withJSONObject: result), encoding
       for (let repeat = 0; repeat < 2; repeat++) {
         const before = observe(pid);
         assert.ok(before.frontmost > 0);
-        if (hidden && cycle === 0 && repeat === 0) assert.notEqual(before.frontmost, pid, 'startup hidden did not become foreground');
+        if (hidden) assert.notEqual(before.frontmost, pid, 'each startup-hidden reveal starts with another app frontmost');
         assert.equal((await commandResult(host, { type: 'show', activate: false, title: 'Retained' }, 'visibility')).visible, true);
         const after = observe(pid);
         assert.equal(after.frontmost, before.frontmost, 'nonactivating show preserves observed foreground app');
@@ -191,7 +191,10 @@ print(String(data: try! JSONSerialization.data(withJSONObject: result), encoding
     await report('legacy-show', 43, 'hidden-2');
     await commandResult(host, { type: 'hide' }, 'visibility');
     await finish(host, !hidden);
-    console.log(`native ${hidden ? 'startup hidden / close' : 'startup shown / EOF'}: retained PID/window/document/input/selection/scroll, hidden eval, independent repeated messages, foreground samples, JSONL, one terminal event`);
+    console.log(`native ${hidden ? 'startup hidden / close' : 'startup shown / EOF'}: retained PID/window/document/input/selection/scroll, hidden eval, independent repeated messages, JSONL, one terminal event`);
+    console.log(hidden
+      ? 'startup hidden: external foreground PID preserved for all 6 nonactivating reveals (not responder-focus proof)'
+      : 'startup shown: retention/state coverage only, not external-app nonactivation proof');
   }
 
   // A controller dying closes its pipe; the native process must finish on EOF.

@@ -24,6 +24,11 @@ if (process.env.GLIMPSE_VISIBILITY_MOCK_DIR) {
   win.on('closed', () => closedCount++);
   try {
     await waitFor(win, 'ready');
+    for (const activate of [0, 1, 'false', 'true', {}, [], NaN]) {
+      assert.throws(() => win.show({ activate }), {
+        name: 'TypeError', message: 'show options.activate must be a boolean',
+      });
+    }
     if (process.platform === 'darwin') {
       for (const visible of [false, false, true, false, true]) {
         const receipt = waitFor(win, 'visibility');
@@ -39,6 +44,9 @@ if (process.env.GLIMPSE_VISIBILITY_MOCK_DIR) {
     const echo = waitFor(win, 'message');
     win.show({ title: 'Legacy' });
     assert.deepEqual(await echo, [{ command: { type: 'show', title: 'Legacy' } }]);
+    const omitted = waitFor(win, 'message');
+    win.show({ activate: null });
+    assert.deepEqual(await omitted, [{ command: { type: 'show' } }]);
     const explicit = waitFor(win, 'message');
     win.show({ activate: true });
     assert.deepEqual(await explicit, [{ command: { type: 'show', activate: true } }]);
@@ -63,6 +71,11 @@ if (process.env.GLIMPSE_VISIBILITY_MOCK_DIR) {
       await waitFor(item, 'ready');
       assert.throws(() => item.hide(), /ordinary macOS windows/);
       assert.throws(() => item.show({ activate: false }), /ordinary macOS windows/);
+      for (const activate of [0, 1, 'false', 'true', {}, [], NaN]) {
+        assert.throws(() => item.show({ activate }), {
+          name: 'TypeError', message: 'show options.activate must be a boolean',
+        });
+      }
       const shown = waitFor(item, 'message');
       item.show();
       assert.deepEqual(await shown, [{ command: { type: 'show' } }]);
@@ -86,8 +99,8 @@ if (process.env.GLIMPSE_VISIBILITY_MOCK_DIR) {
   assert.match(show, /guard activate else/);
   assert.match(show, /activateOnLoad = activate/);
   const nonactivating = show.split('} else {').at(-1);
-  assert.match(nonactivating, /window\.orderFront\(nil\)/);
-  assert.doesNotMatch(nonactivating, /activate\(|makeKey|makeFirstResponder|setActivationPolicy|\.level|orderFrontRegardless/);
+  assert.match(nonactivating, /window\.orderFrontRegardless\(\)/);
+  assert.doesNotMatch(nonactivating, /activate\(|makeKey|makeFirstResponder|setActivationPolicy|\.level/);
   assert.match(swift, /else if activateOnLoad \{\s*window\.makeFirstResponder\(webView\)/);
 
   const dir = mkdtempSync(join(tmpdir(), 'glimpse-visibility-mock-'));

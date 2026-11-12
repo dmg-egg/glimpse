@@ -332,9 +332,9 @@ const isDark = win.info.appearance.darkMode;
 
 **`win.loadFile(path)`** — Load a local HTML file by absolute path.
 
-**`win.hide()`** — Order out an ordinary macOS window without closing it. Idempotent: repeated calls are safe and each emits a `visibility` receipt. The same native process, WKWebView, DOM, and JavaScript stay alive; `.send(js)` and page `message` events continue while hidden. Hide never emits `closed`. Keep `autoClose: false` (the default) for repeated independent messages.
+**`win.hide()`** — Order out an ordinary macOS window without closing it. Idempotent: repeated calls are safe and each emits a `visibility` receipt. The same native process, WKWebView, DOM, and JavaScript stay alive; `.send(js)` and page `message` events continue while hidden. Hide never emits `closed`. It does not deactivate Glimpse or restore the previously foreground app or keyboard focus; Glimpse may remain frontmost with no shown window. Keep `autoClose: false` (the default) for repeated independent messages.
 
-**`win.show(options?)`** — Reveal a hidden window. Optional `options.title` sets the window title. Omission of `options.activate` (or `true`) preserves the existing activating behavior. For ordinary macOS windows only, `activate: false` orders the window front without activating the app, making it key, assigning responder focus, or changing its window level.
+**`win.show(options?)`** — Reveal a hidden window. Optional `options.title` sets the window title. Omission of `options.activate` (or `true`) preserves the existing activating behavior; a non-null value must be boolean or the wrapper throws `TypeError`. For ordinary macOS windows only, `activate: false` orders the window front even when Glimpse is inactive, without activating the app, making it key, assigning responder focus, or changing its window level.
 ```js
 win.on('visibility', ({ visible }) => {
   console.log(visible ? 'Window ordered in' : 'Window ordered out');
@@ -405,7 +405,7 @@ Glimpse uses a newline-delimited JSON (JSON Lines) protocol over stdin/stdout. E
 {"type":"hide"}
 ```
 
-**Show** — Reveal a hidden window. Optional `title`. On ordinary macOS windows, optional `activate:false` avoids activation, key/responder focus assignment, and window-level changes; omission preserves behavior. Each ordinary macOS show returns a `visibility` state receipt.
+**Show** — Reveal a hidden window. Optional `title`. On ordinary macOS windows, optional `activate:false` orders the window front even when Glimpse is inactive, without activation, key/responder focus assignment, or window-level changes; omission preserves behavior. Each ordinary macOS show returns a `visibility` state receipt.
 ```json
 {"type":"show"}
 {"type":"show","title":"Results","activate":false}
@@ -610,9 +610,9 @@ The core protocol and Node.js API are identical across platforms. Some features 
 
 ### Visibility validation (macOS)
 
-Run `node test/visibility.test.mjs` for mock protocol/wrapper and source checks (no native UI). After `npm run build:macos`, run `node test/visibility-native.test.mjs` **serially** with other native UI tests on a macOS window server. Its synthetic local-only page checks retained PID/window ID/document sentinel/input/selected row/scroll, hidden eval append/update, repeated independent messages, repeated hide/show, startup hidden, JSONL receipts, and finite close/EOF/controller teardown. It samples foreground application PID without Accessibility or screen-capture permissions; those samples are not proof of responder focus or Focus/DND behavior.
+Run `npm run test:visibility` (or `node test/visibility.test.mjs`) for mock protocol/wrapper and source checks (no native UI); this suite is also included in `npm test`. After `npm run build:macos`, run `node test/visibility-native.test.mjs` **serially** with other native UI tests on a macOS window server. Its synthetic local-only page checks retained PID/window ID/document sentinel/input/selected row/scroll, hidden eval append/update, repeated independent messages, repeated hide/show, startup hidden, JSONL receipts, and finite close/EOF/controller teardown. Its startup-hidden scenario requires another app to remain frontmost around every nonactivating reveal, using foreground PID samples without Accessibility or screen-capture permissions. The startup-shown scenario covers retention/state only, not external-app nonactivation. Neither proves responder focus, stacking/occlusion, or Focus/DND behavior.
 
-**Manual foreground/Focus check:** With another ordinary app frontmost and an input focused, start Glimpse hidden, update it, and issue `show({ activate: false })`. Confirm typing still reaches that app, no unexpected activation or floating escalation occurs, and hide/show preserves Glimpse's page state. Repeat with Focus manually enabled and across your existing Spaces/overlapping windows, without automation changing Focus or Spaces. Compare with `.show()` to confirm the existing activating behavior. A shown receipt may still correspond to an obscured or other-Space window. No Focus/DND detection or compliance guarantee is provided.
+**Manual foreground/Focus check:** With another ordinary app frontmost and an input focused, start Glimpse hidden, update it, and issue `show({ activate: false })`. Confirm the Glimpse window appears above that app's ordinary window, typing still reaches that app, no unexpected activation or floating escalation occurs, and hide/show preserves Glimpse's page state. Repeat with Focus manually enabled and across your existing Spaces/overlapping windows, without automation changing Focus or Spaces. Compare with `.show()` to confirm the existing activating behavior. A shown receipt may still correspond to an obscured or other-Space window. No Focus/DND detection or compliance guarantee is provided.
 
 ## Performance
 

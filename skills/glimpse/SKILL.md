@@ -63,7 +63,7 @@ win.close();                         // close window
 
 ### Hide / Show Without Reloading (ordinary macOS windows only)
 
-Use `open()` with `autoClose: false` (the default) for a persistent page that can send multiple independent messages. `hide()` orders out the same window; its process, WKWebView, DOM, and JavaScript remain alive, including eval and messages while hidden. Repeated hide is safe and never emits terminal `closed`.
+Use `open()` with `autoClose: false` (the default) for a persistent page that can send multiple independent messages. `hide()` orders out the same window; its process, WKWebView, DOM, and JavaScript remain alive, including eval and messages while hidden. Repeated hide is safe and never emits terminal `closed`. Hide does not deactivate Glimpse or restore the previously foreground app or keyboard focus; Glimpse may remain frontmost with no shown window.
 
 ```js
 const win = open('<div id="status">Starting</div>', { hidden: true });
@@ -77,9 +77,9 @@ win.on('ready', () => {
 });
 ```
 
-`show({ activate: false })` does not activate, make key, assign responder focus, or change window level. `show()` (or `activate: true`) preserves the existing activating behavior. `hide()` and nonactivating show throw on unsupported backends and status items; a custom binary override on macOS must implement this macOS protocol. Existing status-item/other-backend `show()` is unchanged.
+`show({ activate: false })` orders the window front even when Glimpse is inactive, without activating, making key, assigning responder focus, or changing window level. `show()` (or `activate: true`) preserves the existing activating behavior. A non-null `activate` value must be boolean or the wrapper throws `TypeError`. `hide()` and nonactivating show throw on unsupported backends and status items; a custom binary override on macOS must implement this macOS protocol. Existing status-item/other-backend `show()` is unchanged.
 
-Each ordinary macOS `hide`/`show` emits `{ visible: boolean }` via `visibility`, including repeated commands. Register listeners before commands. This is a state receipt, not a generic RPC/ACK, and is not emitted at startup or for user-driven visibility changes. It does **not** prove on-screen visibility across Spaces/occlusion, foreground status, responder focus, or Focus/DND compliance. There is no Focus/DND detection. Manually check that another app's focused input retains typing after nonactivating show, including with Focus manually enabled and your existing Spaces/window arrangement; do not infer these properties from receipts. Close and stdin EOF still terminate finitely, including while hidden. Explicit `setHTML()`/`loadFile()` replace content; use eval for retained-state updates.
+Each ordinary macOS `hide`/`show` emits `{ visible: boolean }` via `visibility`, including repeated commands. Register listeners before commands. This is a state receipt, not a generic RPC/ACK, and is not emitted at startup or for user-driven visibility changes. It does **not** prove on-screen visibility across Spaces/occlusion, foreground status, responder focus, or Focus/DND compliance. There is no Focus/DND detection. Manually check that Glimpse appears above another app's ordinary window and that app's focused input retains typing after nonactivating show, including with Focus manually enabled and your existing Spaces/window arrangement; do not infer these properties from receipts. Close and stdin EOF still terminate finitely, including while hidden. Explicit `setHTML()`/`loadFile()` replace content; use eval for retained-state updates.
 
 ### All Options
 ```js

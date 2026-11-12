@@ -829,7 +829,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScri
                     window.makeFirstResponder(webView)
                     NSApp.activate(ignoringOtherApps: true)
                 } else {
-                    window.orderFront(nil)
+                    window.orderFrontRegardless()
                 }
                 // Command-result ordering state, not occlusion, Spaces, or foreground status.
                 writeToStdout(["type": "visibility", "visible": window.isVisible])
