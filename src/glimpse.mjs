@@ -236,11 +236,21 @@ export function open(html, options = {}) {
     process.emitWarning(`followCursor disabled: ${reason}`, { code: 'GLIMPSE_FOLLOW_CURSOR_UNSUPPORTED' });
   }
 
-  if (options.x != null) args.push(`--x=${options.x}`);
-  if (options.y != null) args.push(`--y=${options.y}`);
-
-  if (options.cursorOffset?.x != null) args.push(`--cursor-offset-x=${options.cursorOffset.x}`);
-  if (options.cursorOffset?.y != null) args.push(`--cursor-offset-y=${options.cursorOffset.y}`);
+  // Linux native clap needs equals syntax for negatives; other backends consume separate tokens.
+  // A binary override follows the native CLI contract of the current OS.
+  const usesLinuxNativeArgs = host.platform === 'linux' ||
+    (host.platform === 'override' && process.platform === 'linux');
+  if (usesLinuxNativeArgs) {
+    if (options.x != null) args.push(`--x=${options.x}`);
+    if (options.y != null) args.push(`--y=${options.y}`);
+    if (options.cursorOffset?.x != null) args.push(`--cursor-offset-x=${options.cursorOffset.x}`);
+    if (options.cursorOffset?.y != null) args.push(`--cursor-offset-y=${options.cursorOffset.y}`);
+  } else {
+    if (options.x != null) args.push('--x', String(options.x));
+    if (options.y != null) args.push('--y', String(options.y));
+    if (options.cursorOffset?.x != null) args.push('--cursor-offset-x', String(options.cursorOffset.x));
+    if (options.cursorOffset?.y != null) args.push('--cursor-offset-y', String(options.cursorOffset.y));
+  }
   if (options.cursorAnchor) args.push('--cursor-anchor', options.cursorAnchor);
   if (options.followMode != null) args.push('--follow-mode', options.followMode);
 
