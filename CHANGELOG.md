@@ -5,7 +5,7 @@
 - **Feature (macOS)**: `win.hide()` / the `hide` command orders out an ordinary window without closing its native process or WKWebView. The document, input, selection, and scroll state remain available, and JavaScript evaluation and repeated page messages continue while hidden.
 - **Feature (macOS)**: `win.show({ activate: false })` / `show` with `activate:false` reveals an ordinary window without activating the app, making it key, assigning responder focus, or raising its window level. Omission preserves the existing activating behavior.
 - **Protocol (macOS)**: Ordinary-window `hide` and `show` commands emit `visibility` receipts with `{ visible: boolean }` for the native shown/ordered-out state. These do not prove on-screen visibility across Spaces or occlusion, foreground status, or Focus/DND compliance.
-- **Compatibility**: Runtime hide and nonactivating show are not supported for status items or other backends. Hide does not restore the previously foreground app or keyboard focus; close and stdin EOF still terminate the native process. Non-null wrapper activation values must be boolean.
+- **Compatibility**: Runtime hide and nonactivating show are not supported for status items or other backends. Hide does not restore the previously foreground app or keyboard focus; close and stdin EOF still terminate the native process. Non-null wrapper activation values must be boolean; malformed native `show.activate` values are diagnosed and ignored. Nonactivating reveal preserves the app's Dock/app-switcher presence.
 - **Distribution**: This personal fork's release is source-only on GitHub, not an npm `glimpseui` publication. No prebuilt binaries are provided.
 
 ## 0.8.2

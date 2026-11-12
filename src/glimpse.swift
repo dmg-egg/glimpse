@@ -1,6 +1,7 @@
 import Cocoa
 import WebKit
 import Foundation
+import CoreFoundation
 
 // MARK: - Stdout Helper
 
@@ -803,7 +804,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScri
             window.orderOut(nil)
             writeToStdout(["type": "visibility", "visible": window.isVisible])
         case "show":
-            let activate = json["activate"] as? Bool ?? true
+            let activate: Bool
+            if let rawActivate = json["activate"] {
+                // NSNumber can bridge numeric 0/1 to Bool; only CFBoolean is a JSON boolean.
+                guard let value = rawActivate as? NSNumber,
+                      CFGetTypeID(value) == CFBooleanGetTypeID() else {
+                    log("show command: activate must be a JSON boolean")
+                    return
+                }
+                activate = value.boolValue
+            } else {
+                activate = true
+            }
             if config.statusItem {
                 guard activate else {
                     log("show activate:false not supported in status-item mode")

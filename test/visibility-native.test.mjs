@@ -110,7 +110,7 @@ async function start(args) {
   return host;
 }
 
-async function finish(host, eof = false) {
+async function finish(host, eof = false, expectedStderr = '') {
   const closed = waitFor(host.events, 'closed', eof ? 'stdin EOF' : 'close command');
   if (eof) host.proc.stdin.end();
   else host.write({ type: 'close' });
@@ -120,7 +120,7 @@ async function finish(host, eof = false) {
   assert.equal(code, 0);
   assert.equal(signal, null);
   assert.equal(host.lines.filter(line => line.type === 'closed').length, 1);
-  assert.equal(host.stderr(), '');
+  assert.equal(host.stderr(), expectedStderr);
   assert.deepEqual(host.errors, []);
   assert.ok(host.stdout().endsWith('\n'), 'stdout ends with a JSONL newline');
   nativePids.delete(host.proc.pid);
@@ -151,6 +151,21 @@ print(String(data: try! JSONSerialization.data(withJSONObject: result), encoding
     assert.equal(baseline.scroll, 270);
     assert.equal(baseline.selected, 'row-12');
     let messageCount = baseline.count;
+    const invalidActivateValues = [null, 0, 1, 'false', 'true', {}, []];
+    const beforeInvalid = observe(pid);
+    if (hidden) assert.notEqual(beforeInvalid.frontmost, pid);
+    const visibilityCount = host.lines.filter(line => line.type === 'visibility').length;
+    for (const activate of invalidActivateValues) {
+      host.write({ type: 'show', activate });
+      // get-info is an existing command; its receipt confirms this ordered batch was handled.
+      await commandResult(host, { type: 'get-info' }, 'info');
+      assert.equal(host.lines.filter(line => line.type === 'visibility').length, visibilityCount,
+        'malformed native show has no visibility receipt');
+    }
+    await delay(150);
+    if (hidden) assert.equal(observe(pid).frontmost, beforeInvalid.frontmost,
+      'malformed native show does not activate');
+    const expectedStderr = invalidActivateValues.map(() => '[glimpse] show command: activate must be a JSON boolean\n').join('');
     let windowIds;
     if (!hidden) {
       windowIds = observe(pid).windows;
@@ -177,6 +192,7 @@ print(String(data: try! JSONSerialization.data(withJSONObject: result), encoding
         assert.ok(before.frontmost > 0);
         if (hidden) assert.notEqual(before.frontmost, pid, 'each startup-hidden reveal starts with another app frontmost');
         assert.equal((await commandResult(host, { type: 'show', activate: false, title: 'Retained' }, 'visibility')).visible, true);
+        await delay(150);
         const after = observe(pid);
         assert.equal(after.frontmost, before.frontmost, 'nonactivating show preserves observed foreground app');
         assert.ok(after.windows.length > 0);
@@ -189,11 +205,13 @@ print(String(data: try! JSONSerialization.data(withJSONObject: result), encoding
     // Omission still takes the legacy activation path and returns a visibility receipt.
     assert.equal((await commandResult(host, { type: 'show' }, 'visibility')).visible, true);
     await report('legacy-show', 43, 'hidden-2');
+    assert.equal((await commandResult(host, { type: 'show', activate: true }, 'visibility')).visible, true);
     await commandResult(host, { type: 'hide' }, 'visibility');
-    await finish(host, !hidden);
+    await finish(host, !hidden, expectedStderr);
+    console.log('native show: malformed activation diagnosed/ignored; boolean true/false and omission accepted');
     console.log(`native ${hidden ? 'startup hidden / close' : 'startup shown / EOF'}: retained PID/window/document/input/selection/scroll, hidden eval, independent repeated messages, JSONL, one terminal event`);
     console.log(hidden
-      ? 'startup hidden: external foreground PID preserved for all 6 nonactivating reveals (not responder-focus proof)'
+      ? 'startup hidden: settled external foreground PID preserved for all 6 nonactivating reveals (not responder-focus proof)'
       : 'startup shown: retention/state coverage only, not external-app nonactivation proof');
   }
 

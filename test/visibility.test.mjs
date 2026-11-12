@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import childProcess, { spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { chmodSync, copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -18,6 +19,17 @@ if (process.env.GLIMPSE_VISIBILITY_MOCK_DIR) {
     process.env.GLIMPSE_BINARY_PATH = join(process.env.GLIMPSE_VISIBILITY_MOCK_DIR, 'glimpse');
   }
   process.env.GLIMPSE_BACKEND = 'native';
+  // Only this isolated subprocess changes the spawn boundary. Platform spoofing
+  // does not change the OS launcher; Node runs the fixture on every real host.
+  const originalSpawn = childProcess.spawn;
+  const fixture = join(process.env.GLIMPSE_VISIBILITY_MOCK_DIR, 'glimpse');
+  childProcess.spawn = (path, args, options) => {
+    assert.equal(realpathSync(path), realpathSync(fixture), 'simulated host still resolves the fixture');
+    const proc = originalSpawn(process.execPath, [path, ...args], options);
+    assert.equal(proc.spawnfile, process.execPath, 'fixture launches through Node');
+    return proc;
+  };
+  syncBuiltinESMExports();
   const { open, statusItem } = await import(pathToFileURL(join(process.env.GLIMPSE_VISIBILITY_MOCK_DIR, 'glimpse.mjs')));
   const win = open('<body>synthetic</body>', { hidden: true });
   let closedCount = 0;
@@ -95,7 +107,12 @@ if (process.env.GLIMPSE_VISIBILITY_MOCK_DIR) {
   assert.match(hide, /"visible": window\.isVisible/);
   assert.doesNotMatch(hide, /closeAndExit|loadHTML|WKWebView\(|exit\(/);
   const show = swift.split('case "show":')[1].split('case "title":')[0];
-  assert.match(show, /json\["activate"\] as\? Bool \?\? true/);
+  assert.match(show, /if let rawActivate = json\["activate"\]/);
+  assert.match(show, /CFGetTypeID\(value\) == CFBooleanGetTypeID\(\)/);
+  assert.match(show, /activate = value\.boolValue/);
+  assert.match(show, /activate = true/);
+  assert.match(show, /log\("show command: activate must be a JSON boolean"\)\s*return/);
+  assert.doesNotMatch(show, /as\? Bool \?\? true/);
   assert.match(show, /guard activate else/);
   assert.match(show, /activateOnLoad = activate/);
   const nonactivating = show.split('} else {').at(-1);
@@ -109,8 +126,7 @@ if (process.env.GLIMPSE_VISIBILITY_MOCK_DIR) {
       copyFileSync(join(sourceDir, name), join(dir, name));
     }
     const fixture = join(dir, 'glimpse');
-    writeFileSync(fixture, `#!/usr/bin/env node
-const { createInterface } = require('node:readline');
+    writeFileSync(fixture, `const { createInterface } = require('node:readline');
 const emit = msg => process.stdout.write(JSON.stringify(msg) + '\\n');
 emit({ type: 'ready' });
 const rl = createInterface({ input: process.stdin });
@@ -133,7 +149,6 @@ rl.on('line', line => {
 });
 rl.on('close', () => process.exit(0));
 `);
-    chmodSync(fixture, 0o755);
     for (const platform of ['darwin', 'linux', 'win32']) {
       const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
         env: { ...process.env, GLIMPSE_VISIBILITY_MOCK_DIR: dir, GLIMPSE_VISIBILITY_MOCK_PLATFORM: platform },
