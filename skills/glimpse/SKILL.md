@@ -99,10 +99,17 @@ Each ordinary macOS `hide`/`show` emits `{ visible: boolean }` via `visibility`,
   hidden: true,           // startup prewarm; reveal with show()
   autoClose: true,        // close after first message
   noDock: true,           // no dock icon or app switcher entry (macOS)
+  stderr: 'inherit',      // default; or synchronous (chunk: Buffer) => void to capture diagnostics
   x, y,                   // exact screen position
   timeout,                // for prompt() only — ms before rejecting
 }
 ```
+
+### Native Diagnostics and Closing
+
+Native diagnostics (including Cocoa/WebKit logs) use stderr, not JSON Lines stdout. Inheritance is the default. For a quiet host, retain raw bytes with `stderr: chunk => diagnostics.push(chunk)` where `diagnostics` is a caller-owned array; the wrapper drains the pipe immediately. Chunks may split lines or UTF-8 characters, so concatenate Buffers or use Node's `StringDecoder`. Bound retention as appropriate. Only `'inherit'` or a synchronous function is accepted (also for `prompt()`/`statusItem()`). Callback failures emit `error` and forward the failed chunk to host stderr; read failures emit `error` too. Attach an `error` listener; do not use an async callback.
+
+On macOS, Cmd-W closes the window and exits the native process, including frameless/no-dock windows. It emits `closed`, never a page `message` or an approval/denial/snooze decision. Editing shortcuts, including Shift-Cmd-Z, are unchanged. `prompt()` resolves `null` when closed without a message.
 
 ### System Info (available on ready)
 ```js

@@ -67,6 +67,13 @@ export function getNativeHostInfo() {
 
 export { getFollowCursorSupport, supportsFollowCursor };
 
+function resolveStderr(options) {
+  const stderr = options.stderr;
+  if (stderr === undefined || stderr === 'inherit') return 'inherit';
+  if (typeof stderr === 'function') return stderr;
+  throw new TypeError('options.stderr must be "inherit" or a synchronous function receiving Buffer chunks');
+}
+
 class GlimpseWindow extends EventEmitter {
   #proc;
   #closed = false;
@@ -74,13 +81,26 @@ class GlimpseWindow extends EventEmitter {
   #info = null;
   #supportsWindowVisibility;
 
-  constructor(proc, initialHTML, supportsWindowVisibility = false) {
+  constructor(proc, initialHTML, stderr, supportsWindowVisibility = false) {
     super();
     this.#proc = proc;
     this.#pendingHTML = initialHTML;
     this.#supportsWindowVisibility = supportsWindowVisibility;
 
     proc.stdin.on('error', () => {}); // Swallow EPIPE if native exits first
+
+    if (proc.stderr) {
+      proc.stderr.on('error', (err) => this.emit('error', err));
+      proc.stderr.on('data', (chunk) => {
+        try {
+          stderr(chunk);
+        } catch (err) {
+          // Preserve the failed chunk even if the caller's capture callback fails.
+          process.stderr.write(chunk);
+          this.emit('error', err instanceof Error ? err : new Error('stderr callback failed', { cause: err }));
+        }
+      });
+    }
 
     const rl = createInterface({ input: proc.stdout, crlfDelay: Infinity });
 
@@ -227,6 +247,7 @@ function ensureBinary() {
 }
 
 export function open(html, options = {}) {
+  const stderr = resolveStderr(options);
   const host = ensureBinary();
 
   const args = [];
@@ -275,12 +296,12 @@ export function open(html, options = {}) {
 
   const spawnArgs = [...(host.extraArgs || []), ...args];
   const proc = spawn(host.path, spawnArgs, {
-    stdio: ['pipe', 'pipe', 'inherit'],
+    stdio: ['pipe', 'pipe', stderr === 'inherit' ? 'inherit' : 'pipe'],
     windowsHide: process.platform === 'win32',
   });
   const supportsWindowVisibility = process.platform === 'darwin'
     && (host.platform === 'darwin' || host.platform === 'override');
-  return new GlimpseWindow(proc, html, supportsWindowVisibility);
+  return new GlimpseWindow(proc, html, stderr, supportsWindowVisibility);
 }
 
 class GlimpseStatusItem extends GlimpseWindow {
@@ -294,6 +315,7 @@ class GlimpseStatusItem extends GlimpseWindow {
 }
 
 export function statusItem(html, options = {}) {
+  const stderr = resolveStderr(options);
   const host = ensureBinary();
 
   if (host.platform !== 'darwin' && host.platform !== 'linux-chromium') {
@@ -306,8 +328,10 @@ export function statusItem(html, options = {}) {
   if (options.title != null)  args.push('--title',  options.title);
 
   const spawnArgs = [...(host.extraArgs || []), ...args];
-  const proc = spawn(host.path, spawnArgs, { stdio: ['pipe', 'pipe', 'inherit'] });
-  return new GlimpseStatusItem(proc, html);
+  const proc = spawn(host.path, spawnArgs, {
+    stdio: ['pipe', 'pipe', stderr === 'inherit' ? 'inherit' : 'pipe'],
+  });
+  return new GlimpseStatusItem(proc, html, stderr);
 }
 
 export function prompt(html, options = {}) {
