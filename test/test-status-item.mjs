@@ -55,8 +55,9 @@ try {
   pass('ready event received');
 
   // Step 3: Eval — click button, verify message round-trip
+  const message = waitFor(item, 'message');
   item.send(`document.getElementById('btn').click()`);
-  const [data] = await waitFor(item, 'message');
+  const [data] = await message;
   if (data?.action !== 'clicked') {
     fail(`Expected data.action === 'clicked', got: ${JSON.stringify(data)}`);
   }
@@ -71,10 +72,11 @@ try {
   pass('resize sent (no crash)');
 
   // Step 6: Close and verify closed event
+  const closed = waitFor(item, 'closed');
   item.close();
   pass('Sent close');
 
-  await waitFor(item, 'closed');
+  await closed;
   pass('closed event received');
 
   console.log('\nAll status-item tests passed');

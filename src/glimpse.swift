@@ -305,8 +305,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScri
     var webView: WKWebView!
     let config: Config
 
-    // Hidden state — tracks whether the window is hidden (prewarm mode)
+    // Hidden state covers both startup prewarming and runtime ordering out.
     var hidden: Bool = false
+    // A navigation finishing after nonactivating show must not claim responder focus.
+    var activateOnLoad: Bool = true
 
     // Cursor anchor — mutable so the follow-cursor protocol command can update it at runtime
     var cursorAnchor: String? = nil
@@ -792,8 +794,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScri
                 info["cursorTip"] = tip
             }
             writeToStdout(info)
+        case "hide":
+            guard !config.statusItem else {
+                log("hide not supported in status-item mode")
+                return
+            }
+            hidden = true
+            window.orderOut(nil)
+            writeToStdout(["type": "visibility", "visible": window.isVisible])
         case "show":
+            let activate = json["activate"] as? Bool ?? true
             if config.statusItem {
+                guard activate else {
+                    log("show activate:false not supported in status-item mode")
+                    return
+                }
                 if let title = json["title"] as? String {
                     nsStatusItem?.button?.title = title
                 }
@@ -805,12 +820,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScri
                     window.title = title
                 }
                 hidden = false
-                if !config.clickThrough && !config.noDock {
-                    NSApp.setActivationPolicy(.regular)
+                activateOnLoad = activate
+                if activate {
+                    if !config.clickThrough && !config.noDock {
+                        NSApp.setActivationPolicy(.regular)
+                    }
+                    window.makeKeyAndOrderFront(nil)
+                    window.makeFirstResponder(webView)
+                    NSApp.activate(ignoringOtherApps: true)
+                } else {
+                    window.orderFront(nil)
                 }
-                window.makeKeyAndOrderFront(nil)
-                window.makeFirstResponder(webView)
-                NSApp.activate(ignoringOtherApps: true)
+                // Command-result ordering state, not occlusion, Spaces, or foreground status.
+                writeToStdout(["type": "visibility", "visible": window.isVisible])
             }
         case "title":
             guard let title = json["title"] as? String else {
@@ -882,7 +904,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScri
                     // WKWebView loading can implicitly order the window in.
                     // Force it back out after every navigation while hidden.
                     window.orderOut(nil)
-                } else {
+                } else if activateOnLoad {
                     window.makeFirstResponder(webView)
                 }
             }

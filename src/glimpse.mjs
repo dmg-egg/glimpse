@@ -72,11 +72,13 @@ class GlimpseWindow extends EventEmitter {
   #closed = false;
   #pendingHTML = null;
   #info = null;
+  #supportsWindowVisibility;
 
-  constructor(proc, initialHTML) {
+  constructor(proc, initialHTML, supportsWindowVisibility = false) {
     super();
     this.#proc = proc;
     this.#pendingHTML = initialHTML;
+    this.#supportsWindowVisibility = supportsWindowVisibility;
 
     proc.stdin.on('error', () => {}); // Swallow EPIPE if native exits first
 
@@ -109,6 +111,9 @@ class GlimpseWindow extends EventEmitter {
           break;
         case 'message':
           this.emit('message', msg.data);
+          break;
+        case 'visibility':
+          this.emit('visibility', { visible: msg.visible });
           break;
         case 'click':
           this.emit('click');
@@ -152,9 +157,20 @@ class GlimpseWindow extends EventEmitter {
     this.#write({ type: 'html', html: Buffer.from(html).toString('base64') });
   }
 
+  hide() {
+    if (!this.#supportsWindowVisibility) {
+      throw new Error('hide() is only supported for ordinary macOS windows');
+    }
+    this.#write({ type: 'hide' });
+  }
+
   show(options = {}) {
+    if (options.activate === false && !this.#supportsWindowVisibility) {
+      throw new Error('show({ activate: false }) is only supported for ordinary macOS windows');
+    }
     const msg = { type: 'show' };
     if (options.title != null) msg.title = options.title;
+    if (options.activate != null) msg.activate = options.activate;
     this.#write(msg);
   }
 
@@ -259,7 +275,9 @@ export function open(html, options = {}) {
     stdio: ['pipe', 'pipe', 'inherit'],
     windowsHide: process.platform === 'win32',
   });
-  return new GlimpseWindow(proc, html);
+  const supportsWindowVisibility = process.platform === 'darwin'
+    && (host.platform === 'darwin' || host.platform === 'override');
+  return new GlimpseWindow(proc, html, supportsWindowVisibility);
 }
 
 class GlimpseStatusItem extends GlimpseWindow {

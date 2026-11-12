@@ -80,8 +80,9 @@ async function openMockWindow(options) {
   const { open } = await import('../src/glimpse.mjs');
   const win = open('<body><a href="https://example.com">example</a></body>', options);
   await waitFor(win, 'ready');
+  const closed = waitFor(win, 'closed');
   win.close();
-  await waitFor(win, 'closed');
+  await closed;
   return JSON.parse(readFileSync(argsPath, 'utf8'));
 }
 
