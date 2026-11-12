@@ -54,22 +54,24 @@ try {
   pass('ready event received');
 
   // Step 3: Programmatically click the button via eval
+  const message = waitFor(win, 'message');
   win.send(`document.getElementById('btn').click()`);
   pass('Sent eval: btn.click()');
 
   // Step 4: Wait for message and assert payload
-  const [data] = await waitFor(win, 'message');
+  const [data] = await message;
   if (data?.action !== 'clicked') {
     fail(`Expected data.action === 'clicked', got: ${JSON.stringify(data)}`);
   }
   pass(`message received: ${JSON.stringify(data)}`);
 
   // Step 5: Close window
+  const closed = waitFor(win, 'closed');
   win.close();
   pass('Sent close');
 
   // Step 6: Wait for closed
-  await waitFor(win, 'closed');
+  await closed;
   pass('closed event received');
 
   console.log('\nAll tests passed');

@@ -15,6 +15,8 @@ Glimpse opens a native WebView window and speaks a bidirectional JSON Lines prot
 
 ## Install
 
+Releases of the `dmg-egg/glimpse` personal fork are source-only on GitHub, with no npm publication or prebuilt binaries. Use [Build from Source](#build-from-source) for this fork. The npm instructions below refer to the upstream `glimpseui` package, not this fork's GitHub releases.
+
 ```bash
 npm install glimpseui
 ```
@@ -285,6 +287,7 @@ if (supportsFollowCursor()) {
 | `ready` | `info: object` | WebView loaded — includes screen, appearance, and cursor info |
 | `message` | `data: object` | Message sent from the page via `window.glimpse.send(data)` |
 | `info` | `info: object` | Fresh system info (response to `.getInfo()`) |
+| `visibility` | `{ visible: boolean }` | Ordinary macOS window's command-result shown/ordered-out state after `hide`/`show`; not foreground or on-screen visibility |
 | `click` | — | Menu bar icon clicked (status item mode only) |
 | `closed` | — | Window was closed (by user or via `.close()`) |
 | `error` | `Error` | Process error or malformed protocol line |
@@ -331,13 +334,24 @@ const isDark = win.info.appearance.darkMode;
 
 **`win.loadFile(path)`** — Load a local HTML file by absolute path.
 
-**`win.show(options?)`** — Reveal a hidden window. Optional `options.title` sets the window title.
+**`win.hide()`** — Order out an ordinary macOS window without closing it. Idempotent: repeated calls are safe and each emits a `visibility` receipt. The same native process, WKWebView, DOM, and JavaScript stay alive; `.send(js)` and page `message` events continue while hidden. Hide never emits `closed`. It does not deactivate Glimpse or restore the previously foreground app or keyboard focus; Glimpse may remain frontmost with no shown window. Keep `autoClose: false` (the default) for repeated independent messages.
+
+**`win.show(options?)`** — Reveal a hidden window. Optional `options.title` sets the window title. Omission of `options.activate` (or `true`) preserves the existing activating behavior; a non-null value must be boolean or the wrapper throws `TypeError`. For ordinary macOS windows only, `activate: false` orders the window front even when Glimpse is inactive, without activating the app, making it key, assigning responder focus, or changing its window level. It preserves Dock/app-switcher presence; an app started hidden stays accessory on a nonactivating reveal.
 ```js
-win.show();
-win.show({ title: 'Results' });
+win.on('visibility', ({ visible }) => {
+  console.log(visible ? 'Window ordered in' : 'Window ordered out');
+});
+win.hide();
+win.send(`document.getElementById('status').textContent = 'Updated while hidden'`);
+win.show({ title: 'Results', activate: false });
+win.show(); // existing activating behavior
 ```
 
-**`win.close()`** — Close the window.
+`hide()` and `show({ activate: false })` are supported **only for ordinary macOS windows**, not status-item popovers or Linux/Windows backends; the wrapper throws for unsupported use. A custom binary override on macOS must implement this macOS protocol. Existing `.show()` behavior on other backends is unchanged.
+
+A `visibility` event is a state receipt after an ordinary macOS window's `hide`/`show` command, including repeated commands. `visible` reflects native `NSWindow.isVisible` (shown versus ordered out), **not** whether the user can see the window across Spaces or occlusion, whether it is foreground, or whether macOS Focus/DND is respected. It is not a generic RPC/ACK, does not arrive on startup or for user-driven visibility changes, and does not correlate unrelated commands. Listen before issuing a command when waiting for its receipt. Visibility commands do not reload the page; explicit `setHTML()`/`loadFile()` still replace content as before.
+
+**`win.close()`** — Close the window and terminate the native process. Stdin EOF also terminates it, including while hidden; hide does not change these defaults.
 
 ### JavaScript Bridge (in-page)
 
@@ -388,11 +402,18 @@ Glimpse uses a newline-delimited JSON (JSON Lines) protocol over stdin/stdout. E
 {"type":"get-info"}
 ```
 
-**Show** — Reveal a hidden window. Optional `title`.
+**Hide** — Order out an ordinary macOS window, keeping its process and page alive. Repeated commands are idempotent; each returns a `visibility` state receipt, never `closed`.
+```json
+{"type":"hide"}
+```
+
+**Show** — Reveal a hidden window. Optional `title`. On ordinary macOS windows, optional `activate:false` orders the window front even when Glimpse is inactive, without activation, key/responder focus assignment, or window-level changes; omission preserves behavior. A supplied `activate` must be a JSON boolean (`true` or `false`); malformed values (including `null`, numbers, and strings) produce a stderr diagnostic and the native host ignores the command without activating or emitting `visibility`. Each valid ordinary macOS show returns a `visibility` state receipt.
 ```json
 {"type":"show"}
-{"type":"show","title":"Results"}
+{"type":"show","title":"Results","activate":false}
 ```
+
+Runtime `hide` and nonactivating `show` are macOS ordinary-window features only. The macOS status-item host rejects these unsupported requests with a stderr diagnostic and no `visibility` receipt; other backends do not implement this contract.
 
 **Title** — Update menu bar text (status item mode only).
 ```json
@@ -431,7 +452,13 @@ Glimpse uses a newline-delimited JSON (JSON Lines) protocol over stdin/stdout. E
 {"type":"click"}
 ```
 
-**Closed** — Window closed.
+**Visibility** — Ordinary macOS window's state after a `hide`/`show` command, not a claim about foreground status, Spaces, occlusion, or Focus/DND compliance. No startup or status-item receipt.
+```json
+{"type":"visibility","visible":false}
+{"type":"visibility","visible":true}
+```
+
+**Closed** — Terminal window closure, not a hide receipt.
 ```json
 {"type":"closed"}
 ```
@@ -581,6 +608,13 @@ The core protocol and Node.js API are identical across platforms. Some features 
 | Status item (menu bar / tray) | ✅ | — | ✅ | — |
 | Open links externally | ✅ | — | ✅ | — |
 | Hidden / prewarm | ✅ | ✅ | ✅ | ✅ |
+| Runtime hide / nonactivating show / visibility receipts (ordinary windows only) | ✅ | — | — | — |
+
+### Visibility validation (macOS)
+
+Run `npm run test:visibility` (or `node test/visibility.test.mjs`) for mock protocol/wrapper and source checks (no native UI); this suite is also included in `npm test`. After `npm run build:macos`, run `node test/visibility-native.test.mjs` **serially** with other native UI tests on a macOS window server. Its synthetic local-only page checks retained PID/window ID/document sentinel/input/selected row/scroll, hidden eval append/update, repeated independent messages, repeated hide/show, startup hidden, JSONL receipts, and finite close/EOF/controller teardown. Its startup-hidden scenario requires another app to remain frontmost around every nonactivating reveal, using settled foreground PID samples (150 ms after each receipt) without Accessibility or screen-capture permissions. It also checks that malformed raw activation values are diagnosed and ignored, including numeric 0/1 coercion cases. The startup-shown scenario covers retention/state only, not external-app nonactivation. Neither proves responder focus, stacking/occlusion, or Focus/DND behavior.
+
+**Manual foreground/Focus check:** With another ordinary app frontmost and an input focused, start Glimpse hidden, update it, and issue `show({ activate: false })`. Confirm the Glimpse window appears above that app's ordinary window, typing still reaches that app, no unexpected activation or floating escalation occurs, and hide/show preserves Glimpse's page state. Repeat with Focus manually enabled and across your existing Spaces/overlapping windows, without automation changing Focus or Spaces. Compare with `.show()` to confirm the existing activating behavior. A shown receipt may still correspond to an obscured or other-Space window. No Focus/DND detection or compliance guarantee is provided.
 
 ## Performance
 

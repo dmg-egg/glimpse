@@ -52,6 +52,7 @@ const win = open(html, options);
 win.on('ready', (info) => {});       // HTML loaded — info has screen, appearance, cursor
 win.on('message', data => {});       // user interaction
 win.on('info', info => {});          // fresh system info (after getInfo())
+win.on('visibility', ({visible}) => {}); // macOS ordinary-window hide/show state receipt only
 win.on('closed', () => {});          // window gone
 win.send('document.title = "Hi"');   // eval JS in webview
 win.setHTML('<h1>New content</h1>'); // replace HTML
@@ -59,6 +60,26 @@ win.info;                            // last-known system info
 win.getInfo();                       // request fresh info
 win.close();                         // close window
 ```
+
+### Hide / Show Without Reloading (ordinary macOS windows only)
+
+Use `open()` with `autoClose: false` (the default) for a persistent page that can send multiple independent messages. `hide()` orders out the same window; its process, WKWebView, DOM, and JavaScript remain alive, including eval and messages while hidden. Repeated hide is safe and never emits terminal `closed`. Hide does not deactivate Glimpse or restore the previously foreground app or keyboard focus; Glimpse may remain frontmost with no shown window.
+
+```js
+const win = open('<div id="status">Starting</div>', { hidden: true });
+win.on('visibility', ({ visible }) => {
+  // Command-result native shown/ordered-out state, not foreground/desktop visibility.
+});
+win.on('ready', () => {
+  win.hide();
+  win.send(`document.getElementById('status').textContent = 'Updated while hidden'`);
+  win.show({ title: 'Results', activate: false });
+});
+```
+
+`show({ activate: false })` orders the window front even when Glimpse is inactive, without activating, making key, assigning responder focus, or changing window level. `show()` (or `activate: true`) preserves the existing activating behavior. A non-null `activate` value must be boolean or the wrapper throws `TypeError`. Nonactivating reveal preserves Dock/app-switcher presence; an app started hidden stays accessory. Raw-protocol `show` accepts only JSON booleans for a supplied `activate`; malformed values are diagnosed on stderr and ignored with no activation or visibility receipt. `hide()` and nonactivating show throw on unsupported backends and status items; a custom binary override on macOS must implement this macOS protocol. Existing status-item/other-backend `show()` is unchanged.
+
+Each ordinary macOS `hide`/`show` emits `{ visible: boolean }` via `visibility`, including repeated commands. Register listeners before commands. This is a state receipt, not a generic RPC/ACK, and is not emitted at startup or for user-driven visibility changes. It does **not** prove on-screen visibility across Spaces/occlusion, foreground status, responder focus, or Focus/DND compliance. There is no Focus/DND detection. Manually check that Glimpse appears above another app's ordinary window and that app's focused input retains typing after nonactivating show, including with Focus manually enabled and your existing Spaces/window arrangement; do not infer these properties from receipts. Close and stdin EOF still terminate finitely, including while hidden. Explicit `setHTML()`/`loadFile()` replace content; use eval for retained-state updates.
 
 ### All Options
 ```js
@@ -75,6 +96,7 @@ win.close();                         // close window
   cursorOffset: {x, y},   // offset from cursor (default: 20, -20)
   openLinks: true,        // open clicked http/https links in default browser
   openLinksApp: '/Applications/Google Chrome.app', // optional app bundle path
+  hidden: true,           // startup prewarm; reveal with show()
   autoClose: true,        // close after first message
   noDock: true,           // no dock icon or app switcher entry (macOS)
   x, y,                   // exact screen position
