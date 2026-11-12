@@ -223,7 +223,7 @@ win.on('error', (error) => console.error(error));
 // When needed: Buffer.concat(diagnostics) contains the captured diagnostic bytes.
 ```
 
-The wrapper immediately drains the captured pipe, even before `ready`. Chunks are raw `Buffer`s, not lines; concatenate bytes or use Node's `StringDecoder` for streaming text. The caller owns retention limits and storage. Only `"inherit"` or a function is accepted; invalid values throw `TypeError` before spawning. If the callback throws, the failed chunk is written to host stderr and the failure emits `error`; stderr read failures also emit `error`. Install an `error` listener as with other process failures. Use a synchronous callback, not an async function.
+The wrapper immediately drains the captured pipe, even before `ready`. Chunks are raw `Buffer`s, not lines; concatenate bytes or use Node's `StringDecoder` for streaming text. The caller owns retention limits and storage. Only `"inherit"` or a function is accepted; invalid values throw `TypeError` before spawning. If the callback throws, the failed chunk is written to host stderr and the failure emits `error`; stderr read failures also emit `error`. Install an `error` listener on handles returned by `open()`/`statusItem()`, as with other process failures. `prompt()` handles errors internally: its first error closes the host and rejects the promise, while later errors do not resettle the promise or become unhandled. Use a synchronous callback, not an async function. Captured chunks may still arrive after `closed` or after `prompt()` settles; those signals do not guarantee that diagnostics are complete.
 
 `prompt()` and `statusItem()` accept the same `stderr` option. This routes diagnostics only; JSON Lines protocol stdout is unchanged.
 

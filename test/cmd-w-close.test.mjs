@@ -126,7 +126,10 @@ MainActor.assumeIsolated {
     for (chars, modifiers) in [
         ("w", NSEvent.ModifierFlags()), ("w", .shift),
         ("W", [.command, .shift]), ("w", [.command, .option]),
-        ("w", [.command, .control]), ("c", [.command, .shift])
+        ("w", [.command, .control]), ("c", [.command, .shift]),
+        ("W", .capsLock), ("W", [.command, .capsLock, .shift]),
+        ("W", [.command, .capsLock, .option]), ("W", [.command, .capsLock, .control]),
+        ("C", [.command, .capsLock]), ("Z", [.command, .capsLock, .shift])
     ] {
         require(!panel.performKeyEquivalent(with: key(chars, modifiers)), "unmapped variant must pass through")
         require(panel.closeRequests == 0, "unmapped variant must not close")
@@ -136,11 +139,14 @@ MainActor.assumeIsolated {
     panel.closeRequests = 0
     require(panel.performKeyEquivalent(with: key("W", .command)), "case-insensitive Cmd-W handled")
     require(panel.closeRequests == 1, "uppercase Cmd-W requests close exactly once")
+    panel.closeRequests = 0
+    require(panel.performKeyEquivalent(with: key("W", [.command, .capsLock])), "Caps Lock Cmd-W handled")
+    require(panel.closeRequests == 1, "Caps Lock Cmd-W requests close exactly once")
 
     // This last key invokes NSWindow.close() and the production windowWillClose:
     // it must emit one closed event and exit(0), not a page message or hide action.
     panel.allowClose = true
-    _ = panel.performKeyEquivalent(with: key("w", .command))
+    _ = panel.performKeyEquivalent(with: key("W", [.command, .capsLock]))
     fputs("Native close delegate did not terminate\\n", stderr)
     exit(1)
 }

@@ -365,10 +365,11 @@ export function prompt(html, options = {}) {
       }
     });
 
-    win.once('error', (err) => {
+    win.on('error', (err) => {
       if (timer) clearTimeout(timer);
       if (!resolved) {
         resolved = true;
+        win.close();
         reject(err);
       }
     });

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const testPath = fileURLToPath(import.meta.url);
 const diagnostic = Buffer.from('[glimpse] synthetic diagnostic\nCocoa: synthetic input-method log\n');
+const promptFailureDiagnostic = Buffer.from('[glimpse] synthetic diagnostic during prompt cleanup\n');
 const burst = Buffer.concat([Buffer.alloc(2 * 1024 * 1024, 120), Buffer.from('\nsynthetic unicode: ☀️\n')]);
 const timeoutMs = 10_000;
 
@@ -18,7 +19,8 @@ function waitFor(emitter, event) {
 async function runMockHost() {
   const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n');
   process.stderr.write(diagnostic);
-  send({ type: 'ready' });
+  const promptCallbackError = process.argv.includes('--prompt-callback-error');
+  if (!promptCallbackError) send({ type: 'ready' });
   const rl = createInterface({ input: process.stdin });
   rl.on('line', (line) => {
     const msg = JSON.parse(line);
@@ -32,7 +34,13 @@ async function runMockHost() {
       process.stderr.write(burst, () => send({ type: 'message', data: { drained: true } }));
     }
     if (msg.type === 'close') {
-      process.stdout.write(JSON.stringify({ type: 'closed' }) + '\n', () => process.exit(0));
+      const close = () => process.stdout.write(JSON.stringify({ type: 'closed' }) + '\n', () => process.exit(0));
+      if (promptCallbackError) {
+        // The close command proves the first chunk was delivered before this one.
+        process.stderr.write(promptFailureDiagnostic, close);
+      } else {
+        close();
+      }
     }
   });
 }
@@ -43,10 +51,13 @@ async function runScenario(scenario) {
   const originalExistsSync = fs.existsSync;
   const spawnOptions = [];
   const children = [];
+  const childClosures = [];
   childProcess.spawn = (_path, args, options) => {
     spawnOptions.push(options);
-    const child = originalSpawn(process.execPath, [testPath, '--mock-host', ...args], options);
+    const mockArgs = scenario === 'prompt-callback-error' ? ['--prompt-callback-error'] : [];
+    const child = originalSpawn(process.execPath, [testPath, '--mock-host', ...mockArgs, ...args], options);
     children.push(child);
+    childClosures.push(waitFor(child, 'close'));
     return child;
   };
   fs.existsSync = () => true;
@@ -65,6 +76,21 @@ async function runScenario(scenario) {
         await assert.rejects(prompt('', { stderr }), TypeError);
       }
       assert.equal(spawnOptions.length, 0, 'invalid options must not spawn a host');
+      return;
+    }
+
+    if (scenario === 'prompt-callback-error') {
+      const failure = new Error('synthetic prompt capture failure');
+      const failedChunks = [];
+      const result = prompt('<body>synthetic</body>', {
+        stderr: (chunk) => { failedChunks.push(chunk); throw failure; },
+        timeout: timeoutMs,
+      });
+      await assert.rejects(result, (error) => error === failure);
+      assert.equal(children.length, 1);
+      assert.deepEqual(await childClosures[0], [0, null], 'prompt must close the host without fixture cleanup');
+      assert.ok(failedChunks.length >= 2, 'both diagnostic writes must trigger handled failures, including after rejection');
+      assert.deepEqual(Buffer.concat(failedChunks), Buffer.concat([diagnostic, promptFailureDiagnostic]));
       return;
     }
 
@@ -159,7 +185,7 @@ if (process.argv[2] === '--mock-host') {
 } else if (process.argv[2] === '--scenario') {
   await runScenario(process.argv[3]);
 } else {
-  const scenarios = ['default', 'inherit', 'capture', 'burst', 'callback-error', 'read-error', 'prompt', 'invalid'];
+  const scenarios = ['default', 'inherit', 'capture', 'burst', 'callback-error', 'read-error', 'prompt', 'prompt-callback-error', 'invalid'];
   if (process.platform !== 'win32') scenarios.push('status-item');
   for (const scenario of scenarios) {
     const result = spawnSync(process.execPath, [testPath, '--scenario', scenario], {
@@ -168,7 +194,10 @@ if (process.argv[2] === '--mock-host') {
     assert.ifError(result.error);
     assert.equal(result.status, 0, `${scenario}: ${result.stderr}`);
     assert.equal(result.stdout, '', `${scenario}: protocol must stay inside the wrapper`);
-    assert.equal(result.stderr, ['default', 'inherit', 'callback-error'].includes(scenario) ? diagnostic.toString() : '');
+    const expectedStderr = scenario === 'prompt-callback-error'
+      ? Buffer.concat([diagnostic, promptFailureDiagnostic]).toString()
+      : ['default', 'inherit', 'callback-error'].includes(scenario) ? diagnostic.toString() : '';
+    assert.equal(result.stderr, expectedStderr);
     console.log(`  ✓ synthetic stderr routing: ${scenario}`);
   }
 }
