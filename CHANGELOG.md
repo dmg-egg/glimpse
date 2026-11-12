@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.2
+
+- **Fix**: Window positions (`x`, `y`) and cursor offsets supplied through the Node wrapper now reach macOS, Windows, and the Linux Chromium backend correctly. Native Linux retains negative-value support.
+- **Compatibility**: Binary overrides use the current OS's native argument format; custom hosts must accept that format.
+
 ## 0.8.1
 
 - **Fix (macOS)**: `⌘C` / `⌘V` / `⌘X` / `⌘A` / `⌘Z` now work inside Glimpse windows. Previously the WKWebView had no Edit menu wired up, so AppKit beeped and the clipboard shortcuts did nothing — breaking copy/paste in textareas, inputs, and Monaco editors (e.g. inside [pi-diff-review](https://github.com/badlogic/pi-diff-review)). Now installs a standard Edit menu (Undo/Redo/Cut/Copy/Paste/Select All) AND adds a `performKeyEquivalent` fallback on `GlimpsePanel` for frameless / `.accessory` modes where the menu bar doesn't route key equivalents. Closes [#18](https://github.com/HazAT/glimpse/issues/18). Credit [@stefanwagnerdev](https://github.com/stefanwagnerdev) for the fallback approach.

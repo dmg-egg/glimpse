@@ -521,6 +521,12 @@ for line in proc.stdout:
 | `GLIMPSE_HOST_PATH` | Alias for `GLIMPSE_BINARY_PATH` |
 | `GLIMPSE_BACKEND` | Linux only: `chromium` (force CDP backend) or `native` (force Rust/GTK binary) |
 
+Binary overrides must accept the native CLI argument format of the current OS:
+separate flag/value tokens on macOS and Windows, and `--flag=value` for positions
+and cursor offsets on Linux. Arbitrary cross-backend overrides are not guaranteed.
+To select the bundled Chromium backend on Linux, use `GLIMPSE_BACKEND=chromium`;
+the wrapper uses that backend's separate-token argument format automatically.
+
 ## Build from Source
 
 ### macOS
